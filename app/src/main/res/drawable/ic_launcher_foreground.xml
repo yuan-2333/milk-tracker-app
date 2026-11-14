@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 奶嘴 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M50,24 h8 a6,6 0 0 1 0,12 h-8 a6,6 0 0 1 0,-12 z" />
+    <!-- 瓶盖 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46,36 h16 a2,2 0 0 1 2,2 v5 h-20 v-5 a2,2 0 0 1 2,-2 z" />
+    <!-- 瓶身 -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M43,47 h22 a4,4 0 0 1 4,4 v29 a4,4 0 0 1 -4,4 h-22 a4,4 0 0 1 -4,-4 v-29 a4,4 0 0 1 4,-4 z" />
+    <!-- 奶液 -->
+    <path
+        android:fillColor="#FFD9AE"
+        android:pathData="M43,62 h22 v18 a4,4 0 0 1 -4,4 h-14 a4,4 0 0 1 -4,-4 z" />
+    <!-- 刻度线 -->
+    <path
+        android:strokeColor="#F0913C"
+        android:strokeWidth="2.4"
+        android:strokeLineCap="round"
+        android:pathData="M48,53 h7 M48,59 h4.5" />
+</vector>
