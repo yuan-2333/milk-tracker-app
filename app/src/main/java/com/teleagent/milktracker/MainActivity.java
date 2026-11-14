@@ -11,10 +11,13 @@ import android.provider.MediaStore;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
+import androidx.webkit.WebViewAssetLoader;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -23,7 +26,9 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * 宝宝喝奶小账本 —— 极简 WebView 壳。
- * 页面全部打包在 assets/index.html 内，完全离线运行，不申请网络权限。
+ * 页面打包在 assets/index.html，通过 WebViewAssetLoader 以
+ * https://appassets.androidplatform.net/assets/ 安全源加载（仍然完全离线），
+ * 使摄像头 getUserMedia 可用（扫码同步需要）。
  * 额外提供：
  *  1) 摄像头授权（扫码同步用）
  *  2) AndroidBridge.saveCsv() 供页面导出 CSV 到手机「下载」目录
@@ -33,6 +38,7 @@ public class MainActivity extends Activity {
     private static final int REQ_CAMERA = 1001;
     private WebView web;
     private PermissionRequest pendingRequest;
+    private WebViewAssetLoader assetLoader;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,7 +55,16 @@ public class MainActivity extends Activity {
         s.setAllowContentAccess(true);
         s.setMediaPlaybackRequiresUserGesture(false);
 
-        web.setWebViewClient(new WebViewClient());
+        assetLoader = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                return assetLoader.shouldInterceptRequest(request.getUrl());
+            }
+        });
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
 
         web.setWebChromeClient(new WebChromeClient() {
@@ -70,7 +85,7 @@ public class MainActivity extends Activity {
             }
         });
 
-        web.loadUrl("file:///android_asset/index.html");
+        web.loadUrl("https://appassets.androidplatform.net/assets/index.html");
     }
 
     @Override
