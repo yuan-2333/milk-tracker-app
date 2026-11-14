@@ -13298,7 +13298,7 @@ async function copySyncCode(){
 }
 
 /* ---- 扫码同步 ---- */
-let scanStream=null, scanTimer=null, scanCanvas=null, scanCtx=null, barcodeDetector=null, scanActive=false;
+let scanStream=null, scanTimer=null, scanCanvas=null, scanCtx=null, barcodeDetector=null, scanActive=false, scanStartAt=0, scanHinted=false;
 async function openScan(){
   $('#scanModal').style.display='flex';
   $('#pasteArea').style.display='none';
@@ -13328,20 +13328,20 @@ async function startScan(){
   }
   try{
     scanStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:'environment'}, width:{ideal:1280}, height:{ideal:720}},
+      video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}},
       audio:false
     });
     const v=$('#scanVideo');
     v.srcObject=scanStream;
     try{ await v.play(); }catch(e){}
     scanActive=true;
+    scanStartAt=Date.now();
+    scanHinted=false;
     if('BarcodeDetector' in window){
       try{ barcodeDetector=new BarcodeDetector({formats:['qr_code']}); }catch(e){ barcodeDetector=null; }
     }
-    if(!barcodeDetector){
-      scanCanvas=document.createElement('canvas');
-      scanCtx=scanCanvas.getContext('2d',{willReadFrequently:true});
-    }
+    scanCanvas=document.createElement('canvas');
+    scanCtx=scanCanvas.getContext('2d',{willReadFrequently:true});
     $('#scanStatus').textContent='对准对方的同步二维码，识别成功后自动合并';
     scanTick();
   }catch(e){
@@ -13353,19 +13353,36 @@ async function scanTick(){
   const v=$('#scanVideo');
   let text=null;
   try{
-    if(barcodeDetector && v.readyState>=2 && v.videoWidth){
-      const codes=await barcodeDetector.detect(v);
-      if(codes && codes.length) text=codes[0].rawValue;
-    }else if(v.readyState>=2 && v.videoWidth){
-      const w=Math.min(v.videoWidth, 720);
-      const h=Math.round(v.videoHeight*w/v.videoWidth);
-      if(scanCanvas.width!==w){ scanCanvas.width=w; scanCanvas.height=h; }
-      scanCtx.drawImage(v,0,0,w,h);
-      const img=scanCtx.getImageData(0,0,w,h);
-      const res=jsQR(img.data, w, h, {inversionAttempts:'dontInvert'});
-      if(res && res.data) text=res.data;
+    if(v.readyState>=2 && v.videoWidth){
+      /* 1) 先试系统原生识别器 */
+      if(barcodeDetector){
+        try{
+          const codes=await barcodeDetector.detect(v);
+          if(codes && codes.length && codes[0].rawValue) text=codes[0].rawValue;
+        }catch(e){}
+      }
+      /* 2) 原生没扫到 → jsQR 兑底：只取取景框中央区域，尽量保持高分辨率 */
+      if(!text){
+        const vw=v.videoWidth, vh=v.videoHeight;
+        const cropW=Math.max(1,Math.round(vw*0.78));
+        const cropH=Math.max(1,Math.round(vh*0.58));
+        const sx=Math.round((vw-cropW)/2), sy=Math.round((vh-cropH)/2);
+        const scale=Math.min(1, 960/cropW);
+        const w=Math.max(1,Math.round(cropW*scale)), h=Math.max(1,Math.round(cropH*scale));
+        if(scanCanvas.width!==w || scanCanvas.height!==h){ scanCanvas.width=w; scanCanvas.height=h; }
+        scanCtx.drawImage(v, sx, sy, cropW, cropH, 0, 0, w, h);
+        const img=scanCtx.getImageData(0,0,w,h);
+        const res=jsQR(img.data, w, h, {inversionAttempts:'attemptBoth'});
+        if(res && res.data) text=res.data;
+      }
     }
   }catch(e){}
+  /* 3) 长时间没识别到 → 给出可操作提示（不停止，继续尝试） */
+  if(!text && !scanHinted && Date.now()-scanStartAt>12000){
+    scanHinted=true;
+    $('#scanStatus').className='desc';
+    $('#scanStatus').textContent='还在识别…手机离屏幕近一点对准二维码、避开反光；实在不行点「粘贴同步码」用文字导入';
+  }
   if(text){
     scanActive=false;
     if(scanTimer){ clearTimeout(scanTimer); scanTimer=null; }
