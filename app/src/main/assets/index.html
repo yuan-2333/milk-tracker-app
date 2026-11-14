@@ -227,6 +227,7 @@ nav button.active .ic{filter:none;opacity:1;transform:translateY(-1px) scale(1.1
 .modal input:focus{border-color:var(--orange)}
 .modal .kg{font-size:16px;color:var(--sub);font-weight:700}
 .modal .tip{font-size:12px;color:var(--sub);margin-bottom:16px}
+.modal .or-divider{font-size:12px;color:var(--sub);margin:12px 0;letter-spacing:4px}
 /* ---------- toast ---------- */
 #toast{
   position:fixed;left:50%;bottom:110px;transform:translateX(-50%) translateY(20px);
@@ -403,15 +404,21 @@ nav button.active .ic{filter:none;opacity:1;transform:translateY(-1px) scale(1.1
   <button id="tab-settings" onclick="switchTab('settings')"><span class="ic">⚙️</span>设置</button>
 </nav>
 
-<!-- 体重弹窗 -->
+<!-- 首次使用引导弹窗 -->
 <div class="modal-mask" id="weightModal" style="display:none">
   <div class="modal">
     <div class="big-em">🍼</div>
-    <h3>先填宝宝体重</h3>
-    <div class="desc">体重用于计算每天的推荐奶量范围</div>
-    <div class="w-row"><input id="modalWeight" type="number" inputmode="decimal" step="0.1" placeholder="0.0"/><span class="kg">kg</span></div>
-    <div class="tip">可随时在"设置"里修改</div>
-    <button class="btn-main" style="letter-spacing:2px" onclick="saveWeightFromModal()">确定，开始记录</button>
+    <h3>欢迎使用宝宝喝奶小账本</h3>
+    <div class="desc">第一次使用请选一种开始方式</div>
+    <button class="btn-main" style="letter-spacing:2px;margin-bottom:6px" onclick="showWeightInput()">新建：填写宝宝体重</button>
+    <div id="weightInputArea" style="display:none">
+      <div class="w-row" style="margin-top:8px"><input id="modalWeight" type="number" inputmode="decimal" step="0.1" placeholder="0.0"/><span class="kg">kg</span></div>
+      <div class="tip">体重用于计算每日推荐奶量，可随时在设置里修改</div>
+      <button class="btn-main" style="letter-spacing:2px" onclick="saveWeightFromModal()">确定，开始记录</button>
+    </div>
+    <div class="or-divider">—— 或 ——</div>
+    <button class="btn-sub" style="width:100%;padding:12px 0;font-size:15px" onclick="syncFromFamily()">👨‍👩‍👧 接收家人记录：扫码/粘贴同步码</button>
+    <div class="tip" id="welcomeTip">家人已在用？扫他们生成的同步码，记录、体重、小名会一起同步过来</div>
   </div>
 </div>
 
@@ -13123,11 +13130,22 @@ function saveProfile(){
   db.profileUpdatedAt = Date.now();
   save(); renderAll(); toast('已保存 ✓');
 }
+function showWeightInput(){
+  $('#weightInputArea').style.display='block';
+  $('#welcomeTip').style.display='none';
+  setTimeout(()=>$('#modalWeight').focus(),200);
+}
+function syncFromFamily(){
+  /* 隐藏欢迎弹窗，直接进入扫码同步；新手机没资料，同步码里的体重/小名会一并带来 */
+  $('#weightModal').style.display='none';
+  openScan();
+}
 function saveWeightFromModal(){
   const w=parseFloat($('#modalWeight').value);
   if(!(w>=0.5 && w<=100)){ toast('体重请填 0.5–100 之间的数字'); return; }
+  const fresh = !db.records.length; /* 新手机首次使用：体重只是入门券，不作为资料更新时间，留给家庭同步码覆盖 */
   db.weight = Math.round(w*10)/10;
-  db.profileUpdatedAt = Date.now();
+  db.profileUpdatedAt = fresh ? 0 : Date.now();
   save(); $('#weightModal').style.display='none';
   renderAll(); toast('体重已保存，开始记录吧 🍼');
 }
@@ -13225,14 +13243,20 @@ function mergeSyncRaw(raw){
       added++;
     }
   });
-  /* 资料（体重/小名）以最近更新的为准 */
+  /* 资料（体重/小名）同步规则：
+     1) 本侧为空的字段（如新手机从没存过小名）直接从对方补齐，不比时间
+     2) 双方都有的字段，以最近更新的为准
+     （新手机首次体重录入不算资料更新，时间戳为空，首次扫码可完整接收对方资料） */
+  let profileTaken=false;
+  if(!db.name && nm){ db.name=nm; profileTaken=true; }
+  if(!db.weight && w>0){ db.weight=w; profileTaken=true; }
   if(pu>(db.profileUpdatedAt||0)){
-    if(w && w>0) db.weight=w;
-    if(nm) db.name=nm;
+    if(w>0 && db.weight!==w){ db.weight=w; profileTaken=true; }
+    if(nm && db.name!==nm){ db.name=nm; profileTaken=true; }
     db.profileUpdatedAt=pu;
   }
   save(); renderAll();
-  return {added:added, dup:incoming.length-added};
+  return {added:added, dup:incoming.length-added, profile:profileTaken};
 }
 
 /* ---- 分享：生成同步码 ---- */
@@ -13391,7 +13415,7 @@ async function scanTick(){
     try{
       const raw=await decodeSyncCode(text);
       const r=mergeSyncRaw(raw);
-      $('#scanStatus').textContent='✅ 合并完成：新增 '+r.added+' 条记录'+(r.dup?'，跳过重复 '+r.dup+' 条':'');
+      $('#scanStatus').textContent='✅ 合并完成：新增 '+r.added+' 条记录'+(r.dup?'，跳过重复 '+r.dup+' 条':'')+(r.profile?' · 小名/体重已同步':'');
       setTimeout(()=>{ closeScan(); switchTab('record'); }, 1300);
     }catch(err){
       $('#scanStatus').className='desc';
@@ -13425,7 +13449,7 @@ async function importFromPaste(){
     const raw=await decodeSyncCode(code);
     const r=mergeSyncRaw(raw);
     $('#pasteInput').value='';
-    toast('已合并：新增 '+r.added+' 条记录'+(r.dup?'，跳过重复 '+r.dup+' 条':''));
+    toast('已合并：新增 '+r.added+' 条记录'+(r.dup?'，跳过重复 '+r.dup+' 条':'')+(r.profile?' · 小名/体重已同步':''));
     closeScan();
     switchTab('record');
   }catch(e){
@@ -13436,7 +13460,7 @@ async function importFromPaste(){
 /* ============ 启动 ============ */
 function renderAll(){ renderToday(); renderHistory(); renderSettings(); }
 initChips(); nowInputs(); renderAll();
-if(!db.weight){ $('#weightModal').style.display='flex'; setTimeout(()=>$('#modalWeight').focus(),300); }
+if(!db.weight && !db.records.length){ $('#weightModal').style.display='flex'; }
 
 /* 每 30 秒刷新"上次喂奶"显示 */
 setInterval(()=>{ if($('#page-record').classList.contains('active')) renderToday(); }, 30000);
